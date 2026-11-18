@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -30,6 +33,9 @@ jobs:
       - name: Copy config next to exe
         run: Copy-Item -Path config.json -Destination dist\config.json -Force
 
+      - name: Package portable zip
+        run: Compress-Archive -Path dist\StreamGuard.exe, dist\config.json -DestinationPath StreamGuard-Windows-x64.zip -Force
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -38,3 +44,8 @@ jobs:
             dist\StreamGuard.exe
             dist\config.json
           if-no-files-found: error
+
+      - name: Publish to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload v0.1.0 StreamGuard-Windows-x64.zip --clobber
