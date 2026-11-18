@@ -3,6 +3,9 @@ __pycache__/
 *.pyo
 build/
 dist/
+dist 2/
+*.dmg
+*.zip
 samples/
 *.log
 .DS_Store
