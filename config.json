@@ -1,5 +1,10 @@
 {
   "capture": {
+    "source": "obs_scene",
+    "obs_source_name": "",
+    "window_title": "",
+    "screenshot_width": 640,
+    "screenshot_height": 360,
     "backend": "auto",
     "monitor": 0,
     "fps": 8,

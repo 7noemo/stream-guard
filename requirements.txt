@@ -5,6 +5,9 @@ numpy>=1.26
 obsws-python>=1.8
 pynput>=1.7
 
+# macOS 窗口列表（window 画面来源需要；obs_scene 不需要）
+pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"
+
 # 可选：真实检测后端（按需取消注释）
 # opennsfw2>=0.3        # 本地 NSFW 分类，对写实画面较准，游戏画面误报偏高
 # torch>=2.2            # CLIP 后端需要

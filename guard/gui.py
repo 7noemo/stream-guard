@@ -35,7 +35,11 @@ def config_path() -> Path:
 
 
 DEFAULT_CONFIG = {
-    "capture": {"backend": "auto", "monitor": 0, "fps": 8, "region": None},
+    "capture": {
+        "source": "obs_scene", "obs_source_name": "", "window_title": "",
+        "screenshot_width": 640, "screenshot_height": 360,
+        "backend": "auto", "monitor": 0, "fps": 8, "region": None,
+    },
     "detector": {
         "backend": "heuristic",
         "threshold": 0.72,
@@ -76,8 +80,8 @@ class App:
                         "count": 0, "total_seconds": 0.0, "last_at": "-", "last_score": 0.0}
 
         root.title("Stream Guard · 直播画面守护")
-        root.geometry("960x700")
-        root.minsize(880, 640)
+        root.geometry("1180x720")
+        root.minsize(1100, 660)
         self._build_ui()
         self._load_cfg_to_ui()
         self._poll()
@@ -171,36 +175,87 @@ class App:
         cols = ttk.Frame(root)
         cols.pack(fill=tk.X, padx=14, pady=(0, 8))
 
-        left = ttk.LabelFrame(cols, text="检测与抓屏", padding=(12, 10))
+        left = ttk.LabelFrame(cols, text="画面来源", padding=(12, 10))
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
 
-        ttk.Label(left, text="检测后端").grid(row=0, column=0, sticky=tk.W, pady=3)
-        self.backend = ttk.Combobox(left, values=["heuristic", "mock", "opennsfw2", "clip"], width=18)
+        ttk.Label(left, text="来源方式").grid(row=0, column=0, sticky=tk.W, pady=3)
+        self.source_kind = ttk.Combobox(
+            left,
+            values=["obs_scene", "obs_source", "window", "screen"],
+            width=18,
+            state="readonly",
+        )
+        self.source_kind.grid(row=0, column=1, sticky=tk.W, pady=3)
+        self.source_kind.bind("<<ComboboxSelected>>", lambda e: self._on_source_change())
+
+        self.source_hint = ttk.Label(left, text="", foreground="#6b7280", wraplength=330)
+        self.source_hint.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(2, 6))
+
+        self.source_panel = ttk.Frame(left)
+        self.source_panel.grid(row=2, column=0, columnspan=3, sticky=tk.W)
+
+        ttk.Label(self.source_panel, text="OBS 源").grid(row=0, column=0, sticky=tk.W, pady=3)
+        self.obs_source_name = ttk.Combobox(self.source_panel, values=[], width=24)
+        self.obs_source_name.grid(row=0, column=1, sticky=tk.W, pady=3)
+
+        ttk.Label(self.source_panel, text="窗口标题").grid(row=1, column=0, sticky=tk.W, pady=3)
+        self.window_title = ttk.Combobox(self.source_panel, values=[], width=24)
+        self.window_title.grid(row=1, column=1, sticky=tk.W, pady=3)
+
+        btn_row = ttk.Frame(self.source_panel)
+        btn_row.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(4, 0))
+        ttk.Button(btn_row, text="刷新 OBS 源", command=self._refresh_obs_sources).pack(side=tk.LEFT)
+        ttk.Button(btn_row, text="刷新窗口", command=self._refresh_windows).pack(side=tk.LEFT, padx=6)
+
+        ttk.Label(self.source_panel, text="截图分辨率").grid(row=3, column=0, sticky=tk.W, pady=3)
+        res_row = ttk.Frame(self.source_panel)
+        res_row.grid(row=3, column=1, sticky=tk.W)
+        self.shot_width = ttk.Spinbox(res_row, from_=160, to=1920, width=6)
+        self.shot_width.pack(side=tk.LEFT)
+        ttk.Label(res_row, text="x").pack(side=tk.LEFT, padx=3)
+        self.shot_height = ttk.Spinbox(res_row, from_=90, to=1080, width=6)
+        self.shot_height.pack(side=tk.LEFT)
+
+        self.screen_panel = ttk.Frame(left)
+        self.screen_panel.grid(row=2, column=0, columnspan=3, sticky=tk.W)
+
+        ttk.Label(self.screen_panel, text="抓屏后端").grid(row=0, column=0, sticky=tk.W, pady=3)
+        self.capture_backend = ttk.Combobox(self.screen_panel, values=["auto", "mss", "dxcam"], width=18)
+        self.capture_backend.grid(row=0, column=1, sticky=tk.W, pady=3)
+
+        region_row = ttk.Frame(self.screen_panel)
+        region_row.grid(row=1, column=0, columnspan=3, pady=(6, 0), sticky=tk.W)
+        ttk.Button(region_row, text="框选画面区域", command=self._pick_region).pack(side=tk.LEFT)
+        ttk.Button(region_row, text="清除", command=self._clear_region).pack(side=tk.LEFT, padx=6)
+        self.region_label = ttk.Label(region_row, text="全屏", foreground="#6b7280")
+        self.region_label.pack(side=tk.LEFT, padx=6)
+
+        detect = ttk.LabelFrame(cols, text="检测参数", padding=(12, 10))
+        detect.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
+
+        ttk.Label(detect, text="检测后端").grid(row=0, column=0, sticky=tk.W, pady=3)
+        self.backend = ttk.Combobox(detect, values=["heuristic", "mock", "opennsfw2", "clip"], width=18)
         self.backend.grid(row=0, column=1, sticky=tk.W, pady=3)
 
-        ttk.Label(left, text="抓屏后端").grid(row=1, column=0, sticky=tk.W, pady=3)
-        self.capture_backend = ttk.Combobox(left, values=["auto", "mss", "dxcam"], width=18)
-        self.capture_backend.grid(row=1, column=1, sticky=tk.W, pady=3)
+        ttk.Label(detect, text="检测帧率").grid(row=1, column=0, sticky=tk.W, pady=3)
+        self.fps = ttk.Spinbox(detect, from_=1, to=30, width=8)
+        self.fps.grid(row=1, column=1, sticky=tk.W, pady=3)
 
-        ttk.Label(left, text="检测帧率").grid(row=2, column=0, sticky=tk.W, pady=3)
-        self.fps = ttk.Spinbox(left, from_=1, to=30, width=8)
-        self.fps.grid(row=2, column=1, sticky=tk.W, pady=3)
+        ttk.Label(detect, text="触发阈值").grid(row=2, column=0, sticky=tk.W, pady=3)
+        self.threshold = ttk.Scale(detect, from_=0.3, to=0.95, length=170)
+        self.threshold.grid(row=2, column=1, sticky=tk.W, pady=3)
+        self.threshold_text = ttk.Label(detect, text="0.72")
+        self.threshold_text.grid(row=2, column=2, padx=6)
 
-        ttk.Label(left, text="触发阈值").grid(row=3, column=0, sticky=tk.W, pady=3)
-        self.threshold = ttk.Scale(left, from_=0.3, to=0.95, length=170)
-        self.threshold.grid(row=3, column=1, sticky=tk.W, pady=3)
-        self.threshold_text = ttk.Label(left, text="0.72")
-        self.threshold_text.grid(row=3, column=2, padx=6)
+        ttk.Label(detect, text="解除阈值").grid(row=3, column=0, sticky=tk.W, pady=3)
+        self.clear_threshold = ttk.Scale(detect, from_=0.05, to=0.8, length=170)
+        self.clear_threshold.grid(row=3, column=1, sticky=tk.W, pady=3)
+        self.clear_text = ttk.Label(detect, text="0.45")
+        self.clear_text.grid(row=3, column=2, padx=6)
 
-        ttk.Label(left, text="解除阈值").grid(row=4, column=0, sticky=tk.W, pady=3)
-        self.clear_threshold = ttk.Scale(left, from_=0.05, to=0.8, length=170)
-        self.clear_threshold.grid(row=4, column=1, sticky=tk.W, pady=3)
-        self.clear_text = ttk.Label(left, text="0.45")
-        self.clear_text.grid(row=4, column=2, padx=6)
-
-        ttk.Label(left, text="连续命中/解除").grid(row=5, column=0, sticky=tk.W, pady=3)
-        frame_hits = ttk.Frame(left)
-        frame_hits.grid(row=5, column=1, columnspan=2, sticky=tk.W)
+        ttk.Label(detect, text="连续命中/解除").grid(row=4, column=0, sticky=tk.W, pady=3)
+        frame_hits = ttk.Frame(detect)
+        frame_hits.grid(row=4, column=1, columnspan=2, sticky=tk.W)
         self.hits = ttk.Spinbox(frame_hits, from_=1, to=20, width=6)
         self.hits.pack(side=tk.LEFT)
         ttk.Label(frame_hits, text="/").pack(side=tk.LEFT, padx=4)
@@ -208,16 +263,9 @@ class App:
         self.clears.pack(side=tk.LEFT)
         ttk.Label(frame_hits, text="帧").pack(side=tk.LEFT, padx=4)
 
-        ttk.Label(left, text="最短保持(秒)").grid(row=6, column=0, sticky=tk.W, pady=3)
-        self.min_hold = ttk.Spinbox(left, from_=0, to=15, width=8)
-        self.min_hold.grid(row=6, column=1, sticky=tk.W, pady=3)
-
-        region_row = ttk.Frame(left)
-        region_row.grid(row=7, column=0, columnspan=3, pady=(10, 0), sticky=tk.W)
-        ttk.Button(region_row, text="框选游戏画面区域", command=self._pick_region).pack(side=tk.LEFT)
-        ttk.Button(region_row, text="清除", command=self._clear_region).pack(side=tk.LEFT, padx=6)
-        self.region_label = ttk.Label(region_row, text="全屏", foreground="#6b7280")
-        self.region_label.pack(side=tk.LEFT, padx=6)
+        ttk.Label(detect, text="最短保持(秒)").grid(row=5, column=0, sticky=tk.W, pady=3)
+        self.min_hold = ttk.Spinbox(detect, from_=0, to=15, width=8)
+        self.min_hold.grid(row=5, column=1, sticky=tk.W, pady=3)
 
         right = ttk.LabelFrame(cols, text="输出与热键", padding=(12, 10))
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(6, 0))
@@ -272,8 +320,14 @@ class App:
     def _load_cfg_to_ui(self):
         cfg = self.cfg
         self.backend.set(cfg["detector"]["backend"])
-        self.capture_backend.set(cfg["capture"].get("backend", "auto"))
-        self.fps.delete(0, tk.END); self.fps.insert(0, cfg["capture"]["fps"])
+        cap = cfg["capture"]
+        self.source_kind.set(cap.get("source", "obs_scene"))
+        self.obs_source_name.set(cap.get("obs_source_name", ""))
+        self.window_title.set(cap.get("window_title", ""))
+        self.shot_width.delete(0, tk.END); self.shot_width.insert(0, cap.get("screenshot_width", 640))
+        self.shot_height.delete(0, tk.END); self.shot_height.insert(0, cap.get("screenshot_height", 360))
+        self.capture_backend.set(cap.get("backend", "auto"))
+        self.fps.delete(0, tk.END); self.fps.insert(0, cap["fps"])
         self.threshold.set(cfg["detector"]["threshold"])
         self.clear_threshold.set(cfg["detector"]["clear_threshold"])
         self.threshold_text.config(text=f"{cfg['detector']['threshold']:.2f}")
@@ -299,13 +353,88 @@ class App:
         region = cfg["capture"].get("region")
         self.region_label.config(text="全屏" if not region else
                                  f"{region['width']}×{region['height']} @ {region['left']},{region['top']}")
+        self._on_source_change()
         self._sync_scale_labels()
+
+    def _on_source_change(self):
+        """按所选来源切换专属控件并更新说明。"""
+        kind = self.source_kind.get()
+        use_obs = kind in ("obs_scene", "obs_source")
+        if use_obs:
+            self.source_panel.tkraise()
+            self.screen_panel.grid_remove()
+            self.source_panel.grid()
+        elif kind == "window":
+            self.source_panel.tkraise()
+            self.screen_panel.grid_remove()
+            self.source_panel.grid()
+        else:
+            self.screen_panel.tkraise()
+            self.source_panel.grid_remove()
+            self.screen_panel.grid()
+
+        hints = {
+            "obs_scene": "推荐：检测 OBS 当前节目场景的最终合成画面，与观众所见一致，不受弹窗/最小化影响。",
+            "obs_source": "检测 OBS 中某个指定源（如游戏捕获），点「刷新 OBS 源」选择。",
+            "window": "跟踪指定窗口的屏幕区域，DX 全屏游戏推荐用无边框窗口；被遮挡时可能抓到遮挡物。",
+            "screen": "抓取整屏或框选区域，直播伴侣等无 API 软件用此方式。",
+        }
+        self.source_hint.config(text=hints.get(kind, ""))
+
+        # OBS 源输入框仅在 obs_source 时启用
+        for widget in (self.obs_source_name,):
+            state = "normal" if kind == "obs_source" else "disabled"
+            try:
+                widget.config(state=state)
+            except tk.TclError:
+                pass
+
+    def _refresh_obs_sources(self):
+        self._read_ui_to_cfg()
+        obs = self.cfg["output"]["obs"]
+
+        def worker():
+            try:
+                from obsws_python import ReqClient
+
+                client = ReqClient(host=obs["host"], port=obs["port"], password=obs["password"])
+                scenes = [s.get("sceneName") for s in client.get_scene_list().scenes]
+                sources = [s.get("sourceName") for s in client.get_source_list().sources]
+                client.disconnect()
+                values = sorted(set([v for v in scenes + sources if v]))
+                self.root.after(0, lambda: self._apply_obs_source_values(values))
+            except Exception as exc:
+                self.root.after(0, lambda: self._append_log("ERROR", f"刷新 OBS 源失败: {exc}"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_obs_source_values(self, values: list[str]):
+        self.obs_source_name["values"] = values
+        self.window_title["values"] = values
+        self._append_log("INFO", f"已加载 {len(values)} 个 OBS 场景/源")
+
+    def _refresh_windows(self):
+        def worker():
+            titles = sorted({w["title"] for w in self.engine.list_windows()})
+            self.root.after(0, lambda: self._apply_window_values(titles))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_window_values(self, titles: list[str]):
+        self.window_title["values"] = titles
+        self._append_log("INFO", f"已加载 {len(titles)} 个窗口")
 
     def _read_ui_to_cfg(self):
         try:
             self.cfg["detector"]["backend"] = self.backend.get()
-            self.cfg["capture"]["backend"] = self.capture_backend.get()
-            self.cfg["capture"]["fps"] = int(self.fps.get())
+            cap = self.cfg["capture"]
+            cap["source"] = self.source_kind.get()
+            cap["obs_source_name"] = self.obs_source_name.get()
+            cap["window_title"] = self.window_title.get()
+            cap["screenshot_width"] = int(self.shot_width.get())
+            cap["screenshot_height"] = int(self.shot_height.get())
+            cap["backend"] = self.capture_backend.get()
+            cap["fps"] = int(self.fps.get())
             self.cfg["detector"]["threshold"] = round(float(self.threshold.get()), 3)
             self.cfg["detector"]["clear_threshold"] = round(float(self.clear_threshold.get()), 3)
             self.cfg["detector"]["consecutive_hits"] = int(self.hits.get())

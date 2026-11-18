@@ -6,7 +6,7 @@ import queue
 import threading
 import time
 
-from .capture import ScreenCapture
+from .capture import build_capture, list_windows
 from .detector import build_detector
 from .output import build_output
 from .state import GuardState
@@ -24,7 +24,7 @@ class GuardEngine:
         self.running = False
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._capture: ScreenCapture | None = None
+        self._capture = None
         self._output = None
 
     # ---------- 外部控制 ----------
@@ -52,6 +52,10 @@ class GuardEngine:
     def panic(self):
         self.actions.put("panic")
 
+    @staticmethod
+    def list_windows() -> list[dict]:
+        return list_windows()
+
     def resume_auto(self):
         self.actions.put("resume")
 
@@ -66,11 +70,7 @@ class GuardEngine:
         state = None
         try:
             capture_cfg = self.cfg["capture"]
-            self._capture = ScreenCapture(
-                backend=capture_cfg.get("backend", "auto"),
-                monitor=capture_cfg.get("monitor", 0),
-                region=capture_cfg.get("region"),
-            )
+            self._capture = build_capture(capture_cfg, self.cfg["output"]["obs"])
             detector = build_detector(self.cfg["detector"])
             dc = self.cfg["detector"]
             state = GuardState(
@@ -81,7 +81,7 @@ class GuardEngine:
                 min_hold_seconds=dc["min_hold_seconds"],
             )
             self._output = build_output(self.cfg["output"])
-            self._emit_log("INFO", f"检测后端: {dc['backend']} · 抓屏: {self._capture.backend}")
+            self._emit_log("INFO", f"检测后端: {dc['backend']} · 画面来源: {self._capture.describe()}")
 
             # 全局热键由上层（GUI/CLI）在主线程注册，避免 macOS 后台线程调用 pynput 崩溃
             fps = max(1, self.cfg["capture"].get("fps", 8))

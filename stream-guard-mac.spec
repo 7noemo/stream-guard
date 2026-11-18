@@ -13,6 +13,7 @@ a = Analysis(
         'mss', 'mss.base', 'numpy',
         'obsws_python', 'websocket', 'websocket.client',
         'pynput', 'pynput.keyboard', 'pynput.mouse', 'pynput._util.darwin',
+        'Quartz', 'objc',
         'guard', 'guard.capture', 'guard.detector', 'guard.engine', 'guard.gui',
         'guard.hotkeys', 'guard.output', 'guard.state', 'guard.stats',
         'tools', 'tools.region_picker',
