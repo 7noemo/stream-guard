@@ -3,6 +3,9 @@ __pycache__/
 *.pyo
 build/
 dist/
+build/
+build-v02/
+dist-v02/
 dist 2/
 *.dmg
 *.zip
