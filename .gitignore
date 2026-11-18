@@ -6,6 +6,8 @@ dist/
 build/
 build-v02/
 dist-v02/
+build-v03/
+dist-v03/
 dist 2/
 *.dmg
 *.zip
