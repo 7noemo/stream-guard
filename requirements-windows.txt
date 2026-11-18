@@ -1,0 +1,16 @@
+# Stream Guard - Windows 运行依赖
+# 推荐 Python 3.11（64 位），兼容性最好
+mss>=10.0
+Pillow>=10.0
+numpy>=1.26
+obsws-python>=1.8
+pynput>=1.7
+pystray>=0.19
+pywin32>=306
+dxcam>=0.3
+pyinstaller>=6.0
+
+# 可选高级检测后端（体积大，按需安装）
+# opennsfw2>=0.3
+# torch>=2.2
+# transformers>=4.40

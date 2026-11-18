@@ -1,0 +1,41 @@
+{
+  "capture": {
+    "backend": "auto",
+    "monitor": 0,
+    "fps": 8,
+    "region": null
+  },
+  "detector": {
+    "backend": "heuristic",
+    "threshold": 0.72,
+    "clear_threshold": 0.45,
+    "consecutive_hits": 3,
+    "consecutive_clear": 5,
+    "min_hold_seconds": 2.0,
+    "mock_scores": [0.05, 0.08, 0.12, 0.85, 0.88, 0.91, 0.80, 0.30, 0.10, 0.05]
+  },
+  "output": {
+    "mode": "obs_filter",
+    "obs": {
+      "host": "localhost",
+      "port": 4455,
+      "password": "",
+      "source_name": "Game Capture",
+      "filter_name": "StreamGuard_Blur"
+    },
+    "companion": {
+      "on_hotkey": "f9",
+      "off_hotkey": "f10"
+    }
+  },
+  "hotkeys": {
+    "toggle": "f9",
+    "panic": "f10",
+    "resume_auto": "f11"
+  },
+  "log": {
+    "level": "INFO",
+    "save_samples": false,
+    "sample_dir": "./samples"
+  }
+}
