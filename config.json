@@ -29,8 +29,11 @@
       "filter_name": "StreamGuard_Blur"
     },
     "companion": {
-      "on_hotkey": "f9",
-      "off_hotkey": "f10"
+      "key_mode": "dual",
+      "show_hotkey": "ctrl+shift+9",
+      "hide_hotkey": "ctrl+shift+0",
+      "toggle_hotkey": "ctrl+shift+8",
+      "press_interval": 0.03
     }
   },
   "hotkeys": {

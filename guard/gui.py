@@ -56,7 +56,11 @@ DEFAULT_CONFIG = {
             "source_name": "Game Capture", "filter_name": "StreamGuard_Blur",
             "normal_scene": "Live", "blocked_scene": "StreamGuard_Blocked",
         },
-        "companion": {"on_hotkey": "f9", "off_hotkey": "f10"},
+        "companion": {
+            "key_mode": "dual",
+            "show_hotkey": "ctrl+shift+9", "hide_hotkey": "ctrl+shift+0",
+            "toggle_hotkey": "ctrl+shift+8", "press_interval": 0.03,
+        },
     },
     "hotkeys": {"toggle": "f9", "panic": "f10", "resume_auto": "f11"},
     "log": {"level": "INFO", "save_samples": False, "sample_dir": "./samples"},
@@ -272,36 +276,85 @@ class App:
 
         ttk.Label(right, text="输出方式").grid(row=0, column=0, sticky=tk.W, pady=3)
         self.output_mode = ttk.Combobox(
-            right, values=["obs_filter", "obs_scene", "companion", "dry_run"], width=18
+            right, values=["obs_filter", "obs_scene", "companion", "dry_run"], width=18,
+            state="readonly",
         )
         self.output_mode.grid(row=0, column=1, sticky=tk.W, pady=3)
+        self.output_mode.bind("<<ComboboxSelected>>", lambda e: self._on_output_change())
+
+        self.output_hint = ttk.Label(right, text="", foreground="#6b7280", wraplength=330)
+        self.output_hint.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(2, 6))
+
+        # ---- OBS 专属面板 ----
+        self.obs_panel = ttk.Frame(right)
+        self.obs_panel.grid(row=2, column=0, columnspan=2, sticky=tk.W)
 
         obs_fields = [
             ("OBS 地址", "obs_host"), ("端口", "obs_port"), ("密码", "obs_password"),
             ("捕获源名称", "source_name"), ("模糊滤镜名", "filter_name"),
             ("正常场景", "normal_scene"), ("遮挡场景", "blocked_scene"),
         ]
-        for i, (label, attr) in enumerate(obs_fields, start=1):
-            ttk.Label(right, text=label).grid(row=i, column=0, sticky=tk.W, pady=2)
-            entry = ttk.Entry(right, width=22, show="*" if attr == "obs_password" else None)
+        for i, (label, attr) in enumerate(obs_fields):
+            ttk.Label(self.obs_panel, text=label).grid(row=i, column=0, sticky=tk.W, pady=2)
+            entry = ttk.Entry(self.obs_panel, width=22, show="*" if attr == "obs_password" else None)
             entry.grid(row=i, column=1, sticky=tk.W, pady=2)
             setattr(self, attr, entry)
 
-        obs_btns = ttk.Frame(right)
-        obs_btns.grid(row=8, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
+        obs_btns = ttk.Frame(self.obs_panel)
+        obs_btns.grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
         ttk.Button(obs_btns, text="测试连接", command=self._test_obs).pack(side=tk.LEFT)
         ttk.Button(obs_btns, text="一键创建模糊滤镜", command=self._create_filter).pack(side=tk.LEFT, padx=6)
-        self.obs_status = ttk.Label(right, text="", foreground="#6b7280", wraplength=330)
-        self.obs_status.grid(row=9, column=0, columnspan=2, sticky=tk.W)
+        self.obs_status = ttk.Label(self.obs_panel, text="", foreground="#6b7280", wraplength=330)
+        self.obs_status.grid(row=8, column=0, columnspan=2, sticky=tk.W)
+
+        # ---- 直播伴侣专属面板 ----
+        self.companion_panel = ttk.Frame(right)
+        self.companion_panel.grid(row=3, column=0, columnspan=2, sticky=tk.W)
+
+        ttk.Label(self.companion_panel, text="按键模式").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.comp_mode = ttk.Combobox(
+            self.companion_panel, values=["dual", "toggle"], width=18, state="readonly"
+        )
+        self.comp_mode.grid(row=0, column=1, sticky=tk.W, pady=2)
+        self.comp_mode.bind("<<ComboboxSelected>>", lambda e: self._on_comp_mode_change())
+
+        ttk.Label(self.companion_panel, text="显示遮挡键").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self.comp_show_key = ttk.Entry(self.companion_panel, width=22)
+        self.comp_show_key.grid(row=1, column=1, sticky=tk.W, pady=2)
+
+        ttk.Label(self.companion_panel, text="隐藏遮挡键").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.comp_hide_key = ttk.Entry(self.companion_panel, width=22)
+        self.comp_hide_key.grid(row=2, column=1, sticky=tk.W, pady=2)
+
+        ttk.Label(self.companion_panel, text="切换键(单键模式)").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.comp_toggle_key = ttk.Entry(self.companion_panel, width=22)
+        self.comp_toggle_key.grid(row=3, column=1, sticky=tk.W, pady=2)
+
+        ttk.Label(self.companion_panel, text="按键间隔(秒)").grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.comp_interval = ttk.Entry(self.companion_panel, width=22)
+        self.comp_interval.grid(row=4, column=1, sticky=tk.W, pady=2)
+
+        comp_btns = ttk.Frame(self.companion_panel)
+        comp_btns.grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
+        ttk.Button(comp_btns, text="配置向导", command=self._open_companion_wizard).pack(side=tk.LEFT)
+        ttk.Button(comp_btns, text="生成遮挡素材", command=self._generate_cover).pack(side=tk.LEFT, padx=6)
+
+        self.comp_warning = ttk.Label(
+            self.companion_panel, text="", foreground="#dc2626", wraplength=330
+        )
+        self.comp_warning.grid(row=6, column=0, columnspan=2, sticky=tk.W)
 
         hk = ttk.Frame(right)
-        hk.grid(row=10, column=0, columnspan=2, pady=(10, 0), sticky=tk.W)
+        hk.grid(row=4, column=0, columnspan=2, pady=(10, 0), sticky=tk.W)
         ttk.Label(hk, text="热键 切换/紧急/自动").pack(side=tk.LEFT)
-        self.hk_toggle = ttk.Entry(hk, width=6)
-        self.hk_panic = ttk.Entry(hk, width=6)
-        self.hk_resume = ttk.Entry(hk, width=6)
+        self.hk_toggle = ttk.Entry(hk, width=8)
+        self.hk_panic = ttk.Entry(hk, width=8)
+        self.hk_resume = ttk.Entry(hk, width=8)
         for e in (self.hk_toggle, self.hk_panic, self.hk_resume):
             e.pack(side=tk.LEFT, padx=3)
+            e.bind("<KeyRelease>", lambda ev: self._check_hotkey_conflict())
+        for e in (self.comp_show_key, self.comp_hide_key, self.comp_toggle_key):
+            e.bind("<KeyRelease>", lambda ev: self._check_hotkey_conflict())
 
         log_frame = ttk.LabelFrame(root, text="运行日志", padding=(10, 6))
         log_frame.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 8))
@@ -345,6 +398,16 @@ class App:
             e = getattr(self, attr)
             e.delete(0, tk.END); e.insert(0, str(obs.get(key, "")))
 
+        comp = out.get("companion", {})
+        self.comp_mode.set(comp.get("key_mode", "dual"))
+        for entry, key, default in [
+            (self.comp_show_key, "show_hotkey", comp.get("on_hotkey", "f9")),
+            (self.comp_hide_key, "hide_hotkey", comp.get("off_hotkey", "f10")),
+            (self.comp_toggle_key, "toggle_hotkey", "ctrl+shift+8"),
+            (self.comp_interval, "press_interval", 0.03),
+        ]:
+            entry.delete(0, tk.END); entry.insert(0, str(comp.get(key, default)))
+
         hk = cfg["hotkeys"]
         for entry, key in [(self.hk_toggle, "toggle"), (self.hk_panic, "panic"),
                            (self.hk_resume, "resume_auto")]:
@@ -354,7 +417,62 @@ class App:
         self.region_label.config(text="全屏" if not region else
                                  f"{region['width']}×{region['height']} @ {region['left']},{region['top']}")
         self._on_source_change()
+        self._on_output_change()
         self._sync_scale_labels()
+
+    def _on_output_change(self):
+        """按输出方式显示对应面板，并给出画面来源提示与热键冲突检查。"""
+        mode = self.output_mode.get()
+        is_obs = mode in ("obs_filter", "obs_scene")
+        is_comp = mode == "companion"
+
+        if is_obs:
+            self.obs_panel.grid()
+            self.companion_panel.grid_remove()
+        elif is_comp:
+            self.obs_panel.grid_remove()
+            self.companion_panel.grid()
+        else:  # dry_run
+            self.obs_panel.grid_remove()
+            self.companion_panel.grid_remove()
+
+        hints = {
+            "obs_filter": "通过 OBS WebSocket 切换模糊滤镜。需先在 OBS 中启用 WebSocket 并添加滤镜。",
+            "obs_scene": "通过 OBS WebSocket 切换正常/遮挡两个场景。",
+            "companion": "无 API 方案：模拟直播伴侣的自定义快捷键，控制遮挡图片素材的显示/隐藏。画面来源建议用 screen 或 window。",
+            "dry_run": "只在日志里显示遮挡状态，不控制任何软件。用于测试判定逻辑。",
+        }
+        self.output_hint.config(text=hints.get(mode, ""))
+        self._on_comp_mode_change()
+        self._check_hotkey_conflict()
+
+    def _on_comp_mode_change(self):
+        mode = self.comp_mode.get()
+        dual = mode != "toggle"
+        for entry in (self.comp_show_key, self.comp_hide_key):
+            entry.config(state=tk.NORMAL if dual else tk.DISABLED)
+        self.comp_toggle_key.config(state=tk.DISABLED if dual else tk.NORMAL)
+
+    def _check_hotkey_conflict(self):
+        """检查伴侣输出热键是否与本程序的手动热键冲突。"""
+        from .keys import parse_hotkey
+
+        self.comp_warning.config(text="")
+        if self.output_mode.get() != "companion":
+            return
+        manual = {parse_hotkey(self.hk_toggle.get()), parse_hotkey(self.hk_panic.get()),
+                  parse_hotkey(self.hk_resume.get())}
+        manual.discard(None)
+        mode = self.comp_mode.get()
+        used = ([self.comp_toggle_key.get()] if mode == "toggle"
+                else [self.comp_show_key.get(), self.comp_hide_key.get()])
+        for text in used:
+            hk = parse_hotkey(text)
+            if hk is not None and hk in manual:
+                self.comp_warning.config(
+                    text=f"⚠ {hk.display} 与手动控制热键冲突，可能导致状态反复切换。请改成不同的键。"
+                )
+                return
 
     def _on_source_change(self):
         """按所选来源切换专属控件并更新说明。"""
@@ -448,6 +566,17 @@ class App:
                 "filter_name": self.filter_name.get(), "normal_scene": self.normal_scene.get(),
                 "blocked_scene": self.blocked_scene.get(),
             })
+            comp = self.cfg["output"].setdefault("companion", {})
+            comp.update({
+                "key_mode": self.comp_mode.get(),
+                "show_hotkey": self.comp_show_key.get(),
+                "hide_hotkey": self.comp_hide_key.get(),
+                "toggle_hotkey": self.comp_toggle_key.get(),
+            })
+            try:
+                comp["press_interval"] = float(self.comp_interval.get())
+            except ValueError:
+                comp["press_interval"] = 0.03
             self.cfg["hotkeys"].update({
                 "toggle": self.hk_toggle.get(), "panic": self.hk_panic.get(),
                 "resume_auto": self.hk_resume.get(),
@@ -472,6 +601,84 @@ class App:
         self.engine.stop()
         self.btn_start.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
+
+    # ---------- 直播伴侣 ----------
+    def _generate_cover(self):
+        """生成可导入直播伴侣的遮挡图片素材。"""
+        from tools.make_cover import STYLE_LABELS, make_cover
+
+        folder = filedialog.askdirectory(title="选择遮挡素材保存目录")
+        if not folder:
+            return
+        try:
+            from tkinter import simpledialog
+
+            text = simpledialog.askstring("遮挡素材", "遮挡画面上显示的文字:",
+                                          initialvalue="画面已临时处理", parent=self.root)
+            if text is None:
+                return
+            paths = []
+            for style, label in STYLE_LABELS.items():
+                p = make_cover(Path(folder) / f"遮挡素材_{style}.png", style=style, text=text,
+                               width=1920, height=1080)
+                paths.append(p)
+            self._append_log("INFO", f"已生成 {len(paths)} 张遮挡素材到 {folder}")
+            messagebox.showinfo(
+                "遮挡素材已生成",
+                f"已生成 {len(paths)} 张 PNG:\n" + "\n".join(p.name for p in paths)
+                + "\n\n在直播伴侣中「添加素材 → 图片」选一张，"
+                  "拉伸铺满画布并置于最上层。",
+            )
+        except Exception as exc:
+            messagebox.showerror("生成失败", str(exc))
+
+    def _open_companion_wizard(self):
+        """分步讲解如何把抖音直播伴侣接入 Stream Guard。"""
+        win = tk.Toplevel(self.root)
+        win.title("抖音直播伴侣 · 接入向导")
+        win.geometry("620x560")
+        win.transient(self.root)
+
+        frame = ttk.Frame(win, padding=(16, 14))
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(frame, text="抖音直播伴侣接入向导",
+                  font=("Microsoft YaHei", 14, "bold")).pack(anchor=tk.W)
+        ttk.Label(frame, text="直播伴侣没有开放接口，通过「自定义快捷键 + 遮挡图片素材」实现自动遮挡。",
+                  foreground="#6b7280", wraplength=580).pack(anchor=tk.W, pady=(4, 10))
+
+        steps = [
+            ("1. 准备遮挡素材",
+             "点「生成遮挡素材」按钮，选一个目录生成 PNG。回到直播伴侣，"
+             "「添加素材 → 图片」选中它，拉伸铺满画布并拖到最上层。平时保持隐藏。"),
+            ("2. 设置快捷键",
+             "直播伴侣左下角「直播设置 → 快捷键」，找到刚添加的图片素材，"
+             "给「显示」绑定一个冷门组合键（如 Ctrl+Shift+9），「隐藏」绑定另一个（如 Ctrl+Shift+0）。"
+             "不要用 Ctrl+1~9（那被场景切换占用），也不要和游戏按键、本程序热键重复。"),
+            ("3. 在本程序填入同样的键",
+             "输出方式选 companion；按键模式选 dual（显示/隐藏分开，最稳）；"
+             "填入与直播伴侣完全一致的显示键和隐藏键。填完界面会自动检查是否与手动热键冲突。"),
+            ("4. 选择画面来源",
+             "直播伴侣无 API，检测画面请选 screen（框选游戏区域，排除弹幕和伴侣界面）"
+             "或 window（跟踪游戏窗口）。OBS 虚拟摄像机方案也可保留 obs_scene。"),
+            ("5. 测试与开播",
+             "先点「开始监控」，用测试素材或真实画面触发一次，确认伴侣画面会自动盖遮挡、"
+             "恢复后自动撤掉。确认无误再正式开播。"),
+        ]
+        for title, body in steps:
+            box = ttk.LabelFrame(frame, text=title, padding=(10, 6))
+            box.pack(fill=tk.X, pady=(0, 8))
+            ttk.Label(box, text=body, wraplength=560, justify=tk.LEFT).pack(anchor=tk.W)
+
+        note = ("提醒：模拟按键作用于当前焦点窗口。若直播伴侣的快捷键是全局生效的（推荐），"
+                "切到游戏也无妨；若只在伴侣窗口内生效，开播时请勿让游戏独占焦点，"
+                "或把游戏设为无边框窗口模式。")
+        ttk.Label(frame, text=note, wraplength=580, foreground="#b45309",
+                  justify=tk.LEFT).pack(anchor=tk.W, pady=(2, 8))
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill=tk.X)
+        ttk.Button(btns, text="生成遮挡素材", command=self._generate_cover).pack(side=tk.LEFT)
+        ttk.Button(btns, text="关闭", command=win.destroy).pack(side=tk.RIGHT)
 
     def _pick_region(self):
         try:

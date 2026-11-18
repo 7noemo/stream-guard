@@ -89,29 +89,67 @@ class OBSSceneOutput:
 
 
 class CompanionOutput:
-    """直播伴侣等无 API 的软件：模拟按下预设热键。
+    """抖音直播伴侣等无 API 的软件：模拟其自定义快捷键显示/隐藏遮挡素材。
 
-    需要在直播伴侣里提前把 on_hotkey / off_hotkey 绑定到「显示/隐藏」遮挡素材。
+    在直播伴侣「直播设置 → 快捷键」里给一张遮挡图片素材绑定显示/隐藏按键，
+    本模块在风险出现时发「显示」键把遮挡图层盖上去，画面恢复后发「隐藏」键。
+
+    两种模式：
+      - dual   : 显示键 / 隐藏键分开（推荐，状态确定，不受焦点影响）
+      - toggle : 单个键切换（要求直播伴侣侧设置为切换语义）
+
+    所有按键都支持组合键写法，如 ctrl+1、ctrl+shift+f9。
     """
 
     def __init__(self, cfg: dict):
-        from pynput.keyboard import Controller, Key
+        from .keys import parse_hotkey, press_hotkey
 
-        self.keyboard = Controller()
-        self.on_key = getattr(Key, cfg.get("on_hotkey", "f9"), None) or cfg.get("on_hotkey", "f9")
-        self.off_key = getattr(Key, cfg.get("off_hotkey", "f10"), None) or cfg.get("off_hotkey", "f10")
+        self._press = press_hotkey
+        self.mode = cfg.get("key_mode", "dual")
+
+        # 兼容旧配置的 on_hotkey / off_hotkey 字段
+        show_text = cfg.get("show_hotkey") or cfg.get("on_hotkey") or "f9"
+        hide_text = cfg.get("hide_hotkey") or cfg.get("off_hotkey") or "f10"
+        toggle_text = cfg.get("toggle_hotkey") or ""
+
+        self.show = parse_hotkey(show_text)
+        self.hide = parse_hotkey(hide_text)
+        self.toggle = parse_hotkey(toggle_text)
+        self.interval = float(cfg.get("press_interval", 0.03))
+
+        if self.mode == "toggle":
+            if self.toggle is None:
+                raise RuntimeError("单键切换模式需要填写「切换热键」")
+        else:
+            if self.show is None or self.hide is None:
+                raise RuntimeError("双键模式需要填写「显示热键」和「隐藏热键」")
+            if self.show == self.hide:
+                raise RuntimeError("显示热键与隐藏热键不能相同，否则无法区分遮挡状态")
+
         self._blocked = False
+        log.info("直播伴侣输出已就绪: 模式=%s, 显示=%s, 隐藏=%s",
+                 self.mode,
+                 self.show.display if self.show else "-",
+                 self.hide.display if self.hide else "-")
 
     def set_blocked(self, blocked: bool) -> None:
         if blocked == self._blocked:
             return
-        self.keyboard.press(self.on_key if blocked else self.off_key)
-        self.keyboard.release(self.on_key if blocked else self.off_key)
+        if self.mode == "toggle":
+            self._press(self.toggle, self.interval)
+        else:
+            self._press(self.show if blocked else self.hide, self.interval)
         self._blocked = blocked
 
     def close(self) -> None:
+        # 退出时务必把遮挡图层撤掉，不能把马赛克留在观众的直播画面上
         if self._blocked:
-            self.set_blocked(False)
+            if self.mode == "toggle":
+                self._press(self.toggle, self.interval)
+            else:
+                self._press(self.hide, self.interval)
+            self._blocked = False
+            log.info("直播伴侣遮挡已复位（画面恢复）")
 
 
 def ensure_obs_filter(cfg: dict) -> str:
