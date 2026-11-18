@@ -2,6 +2,11 @@ name: Build Stream Guard Windows EXE
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to upload to'
+        required: true
+        default: 'v0.2.0'
   push:
     tags:
       - 'v*'
@@ -48,4 +53,5 @@ jobs:
       - name: Publish to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload v0.1.0 StreamGuard-Windows-x64.zip --clobber
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: gh release upload "$env:RELEASE_TAG" StreamGuard-Windows-x64.zip --clobber
