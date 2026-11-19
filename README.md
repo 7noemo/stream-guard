@@ -52,7 +52,8 @@ python3 app.py
 ```bash
 python3 -m pip install pyinstaller
 ./build-mac.sh
-# 产物: StreamGuard-macOS-arm64.dmg；build-mac/ 与 dist-mac/ 会自动删除
+# 产物: StreamGuard-macOS-arm64.dmg
+# 脚本会提示中间产物 dist-mac/ 与 build-mac/ 的位置，可按需删除释放约 130MB
 ```
 
 或手动打包：
