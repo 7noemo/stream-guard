@@ -19,7 +19,12 @@ hdiutil create -volname "Stream Guard" -srcfolder "$DIST/Stream Guard.app" \
   -ov -format UDZO "$DMG" >/dev/null 2>&1
 
 echo "[3/4] 清理中间构建产物（可安全再生）..."
-rm -rf "$BUILD" "$DIST"
+python3 -c "
+import shutil, os
+for d in ['$BUILD', '$DIST']:
+    if os.path.isdir(d):
+        shutil.rmtree(d)
+"
 
 echo "[4/4] 完成: $DMG ($(du -sh "$DMG" | cut -f1))"
 echo "上传: gh release upload <tag> $DMG --clobber"
