@@ -47,6 +47,10 @@ DEFAULT_CONFIG = {
         "consecutive_hits": 3,
         "consecutive_clear": 5,
         "min_hold_seconds": 2.0,
+        "threads": 2,
+        "frame_skip": True,
+        "frame_skip_threshold": 3.0,
+        "frame_skip_max": 12,
         "mock_scores": [0.05, 0.08, 0.12, 0.85, 0.88, 0.91, 0.80, 0.30, 0.10, 0.05],
     },
     "output": {
@@ -815,6 +819,13 @@ class App:
     def _append_log(self, level: str, message: str):
         self.log_text.config(state=tk.NORMAL)
         self.log_text.insert(tk.END, f"[{level}] {message}\n")
+        # 日志面板行数有界：超过上限删掉最旧的一半，避免长期运行占用内存
+        try:
+            line_count = int(self.log_text.index("end-1c").split(".")[0])
+            if line_count > 600:
+                self.log_text.delete("1.0", "300.0")
+        except Exception:
+            pass
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 

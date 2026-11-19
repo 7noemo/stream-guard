@@ -18,6 +18,19 @@ log = logging.getLogger(__name__)
 IS_WINDOWS = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
 
+# 采集后统一降采样目标：检测只需要低分辨率，全尺寸传入纯属浪费内存与 CPU
+DEFAULT_DOWNSCALE = (640, 360)
+
+
+def _downscale(image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """按最大边等比缩小，避免竖屏被拉伸变形。已是小图则原样返回。"""
+    max_w, max_h = size
+    if image.width <= max_w and image.height <= max_h:
+        return image
+    ratio = min(max_w / image.width, max_h / image.height)
+    new_size = (max(1, int(image.width * ratio)), max(1, int(image.height * ratio)))
+    return image.resize(new_size, Image.BILINEAR)
+
 
 class CaptureSource:
     """统一接口：grab() 返回 RGB 的 PIL Image，close() 释放资源。"""
@@ -107,10 +120,11 @@ class WindowCapture(CaptureSource):
 
     backend = "window"
 
-    def __init__(self, title_contains: str = ""):
+    def __init__(self, title_contains: str = "", downscale: tuple[int, int] = DEFAULT_DOWNSCALE):
         import mss
 
         self.title = title_contains.strip()
+        self.downscale = downscale
         self.sct = mss.mss()
         if self.title:
             wins = list_windows()
@@ -143,7 +157,8 @@ class WindowCapture(CaptureSource):
             "height": max(1, rect["height"]),
         }
         raw = self.sct.grab(area)
-        return Image.frombytes("RGB", raw.size, raw.rgb)
+        img = Image.frombytes("RGB", raw.size, raw.rgb)
+        return _downscale(img, self.downscale)
 
     def describe(self) -> str:
         return f"window({self.title or '首个窗口'})"
@@ -158,10 +173,12 @@ class ScreenCapture(CaptureSource):
 
     backend = "screen"
 
-    def __init__(self, backend: str = "auto", monitor: int = 0, region: Optional[dict] = None):
+    def __init__(self, backend: str = "auto", monitor: int = 0, region: Optional[dict] = None,
+                 downscale: tuple[int, int] = DEFAULT_DOWNSCALE):
         import mss
 
         self.sct = mss.mss()
+        self.downscale = downscale
         monitors = self.sct.monitors
         idx = (1 if len(monitors) > 1 else 0) if monitor == 0 else monitor
         if idx >= len(monitors):
@@ -200,9 +217,11 @@ class ScreenCapture(CaptureSource):
             frame = self.camera.grab(region=self.dxcam_region)
             if frame is None:
                 raise RuntimeError("dxcam 未能抓到画面")
-            return Image.fromarray(frame)
+            # frame 是 numpy RGB 数组，从 array 转 Image 是零拷贝视图
+            return _downscale(Image.fromarray(frame), self.downscale)
         raw = self.sct.grab(self.capture_area)
-        return Image.frombytes("RGB", raw.size, raw.rgb)
+        img = Image.frombytes("RGB", raw.size, raw.rgb)
+        return _downscale(img, self.downscale)
 
     def describe(self) -> str:
         return f"screen({self.screen_backend})"
@@ -271,19 +290,23 @@ def build_capture(cfg: dict, obs_cfg: dict) -> CaptureSource:
       backend / monitor / region: 屏幕区域模式沿用旧参数
     """
     source = cfg.get("source", "obs_scene")
+    # OBS 截图分辨率复用为 screen/window 的降采样上限，避免全尺寸图像流入检测链路
+    downscale = (int(cfg.get("screenshot_width", 640) or 640),
+                 int(cfg.get("screenshot_height", 360) or 360))
     if source in ("obs_scene", "obs_source"):
         return OBSCapture(
             obs_cfg,
             source_name=cfg.get("obs_source_name", "") if source == "obs_source" else "",
-            width=cfg.get("screenshot_width", 640),
-            height=cfg.get("screenshot_height", 360),
+            width=downscale[0],
+            height=downscale[1],
         )
     if source == "window":
-        return WindowCapture(cfg.get("window_title", ""))
+        return WindowCapture(cfg.get("window_title", ""), downscale=downscale)
     if source == "screen":
         return ScreenCapture(
             backend=cfg.get("backend", "auto"),
             monitor=cfg.get("monitor", 0),
             region=cfg.get("region"),
+            downscale=downscale,
         )
     raise ValueError(f"未知画面来源: {source}")

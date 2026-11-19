@@ -18,8 +18,9 @@ log = logging.getLogger("stream-guard.engine")
 class GuardEngine:
     def __init__(self, cfg: dict):
         self.cfg = cfg
-        self.events: queue.Queue = queue.Queue()
-        self.actions: queue.Queue = queue.Queue()
+        # 有界队列：UI 卡顿或被遮挡时丢弃最旧日志，避免无限堆积占内存
+        self.events: queue.Queue = queue.Queue(maxsize=500)
+        self.actions: queue.Queue = queue.Queue(maxsize=100)
         self.stats = Stats()
         self.running = False
         self._stop = threading.Event()
@@ -61,13 +62,24 @@ class GuardEngine:
 
     # ---------- 内部循环 ----------
     def _emit_log(self, level: str, message: str):
-        self.events.put(("log", level, message))
+        try:
+            self.events.put_nowait(("log", level, message))
+        except queue.Full:
+            try:
+                self.events.get_nowait()  # 丢最旧一条，给新日志腾位置
+                self.events.put_nowait(("log", level, message))
+            except queue.Full:
+                pass
 
     def _emit_status(self, **kwargs):
-        self.events.put(("status", kwargs))
+        try:
+            self.events.put_nowait(("status", kwargs))
+        except queue.Full:
+            pass
 
     def _run(self):
         state = None
+        detector = None
         try:
             capture_cfg = self.cfg["capture"]
             self._capture = build_capture(capture_cfg, self.cfg["output"]["obs"])
@@ -133,6 +145,11 @@ class GuardEngine:
             self._emit_log("ERROR", f"引擎异常: {exc}")
         finally:
             self._cleanup()
+            try:
+                if detector is not None and hasattr(detector, "close"):
+                    detector.close()  # 释放模型占用的显存/内存
+            except Exception:
+                pass
 
     def _apply(self, blocked: bool, score: float, reason: str, state: GuardState):
         self._output.set_blocked(blocked)

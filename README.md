@@ -47,13 +47,22 @@ python3 -m pip install -r requirements.txt
 python3 app.py
 ```
 
-打包 macOS 应用：
+打包 macOS 应用（推荐用脚本，固定输出目录并在完成后清理中间产物）：
 
 ```bash
 python3 -m pip install pyinstaller
-python3 -m PyInstaller stream-guard-mac.spec --noconfirm --clean
-# 产物: dist/Stream Guard.app
+./build-mac.sh
+# 产物: StreamGuard-macOS-arm64.dmg；build-mac/ 与 dist-mac/ 会自动删除
 ```
+
+或手动打包：
+
+```bash
+python3 -m PyInstaller stream-guard-mac.spec --noconfirm --distpath dist-mac --workpath build-mac
+```
+
+> PyInstaller 的中间产物（`build*/`、`dist*/`）体积很大（每份约 130MB）且可随时再生。
+> 反复打包后若磁盘紧张，直接删除这些目录即可，不影响源码和运行。
 
 > macOS 版不启用系统托盘，关闭窗口即退出。全局热键依赖辅助功能权限，未授权时请用界面按钮。
 
@@ -111,6 +120,18 @@ python3 -m PyInstaller stream-guard-mac.spec --noconfirm --clean
 - 退出程序时会自动发"隐藏"键复位，不会把遮挡图层留在直播画面上。但程序被强制结束（任务管理器 kill）时来不及复位，开播前请确认伴侣画面已恢复正常。
 
 **更稳的替代方案**：抖音官方已关闭 OBS 推流模式，但支持把 OBS 虚拟摄像机作为摄像头素材接入伴侣。这样检测走 OBS WebSocket（`obs_scene` 来源）、遮挡走 OBS 滤镜（`obs_filter` 输出），比模拟按键可靠得多。代价是画面需经 OBS 中转一次。
+
+## 性能与资源占用
+
+程序按直播长时间运行设计，做了这些优化：
+
+- **采集即降采样**：抓屏后立刻缩到检测尺寸（默认 640×360，可在「截图分辨率」改）。1920×1080 全尺寸不再流入检测链路，像素量减少约 9 倍，显著降低 CPU 与内存分配。OBS 路径直接按该尺寸截图。
+- **静止帧跳过**（模型后端）：画面几乎不变时复用上一次的风险分，跳过昂贵的模型推理；画面一变立即重算，长期静止也有强制重算上限。静止场景下模型后端 CPU/GPU 占用大幅下降。
+- **模型资源限制**：`opennsfx2`（TensorFlow）开启显存按需增长、限制线程；`CLIP`（PyTorch）用推理模式并限制线程数（配置 `detector.threads`，默认 2），避免抢游戏资源。停止监控时释放模型。
+- **内存有界**：日志面板、事件队列、遮挡统计都有上限，长时间直播内存不会持续增长。
+- **检测后端开销排序**：`heuristic`（纯数值，最低）→ `opennsfw2` → `CLIP`（最高）。追求低占用用 heuristic，追求准确度用模型后端。
+
+**降低占用的建议**：检测帧率按需要调（8fps 够用，无需拉满）；抓屏区域只框游戏画面；模型后端把 `threads` 设为 1~2；游戏用无边框窗口模式配合 dxcam 后端。
 
 ## 检测后端
 
@@ -170,6 +191,7 @@ stream-guard/
 │   ├── region_picker.py      # 可视化区域选择
 │   └── make_cover.py         # 生成直播伴侣遮挡图片素材
 ├── build.bat                 # Windows 一键打包
+├── build-mac.sh              # macOS 一键打包（自动清理中间产物）
 ├── run.bat                   # Windows 开发模式运行
 ├── stream-guard.spec         # Windows PyInstaller 配置
 ├── stream-guard-mac.spec     # macOS PyInstaller 配置
